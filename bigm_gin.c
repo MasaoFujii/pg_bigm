@@ -150,17 +150,20 @@ gin_extract_query_bigm(PG_FUNCTION_ARGS)
 			if (bgmlen == 1 && !removeDups)
 			{
 				const char *sp;
+				const char *endstr = str + slen;
 
 				*recheck = false;
 				for (sp = str; (sp - str) < slen;)
 				{
-					if (t_isspace(sp))
+					int			clen = bigm_pg_mblen_range(sp, endstr);
+
+					if (bigm_t_isspace_with_len(sp, clen))
 					{
 						*recheck = true;
 						break;
 					}
 
-					sp += IS_HIGHBIT_SET(*sp) ? pg_mblen(sp) : 1;
+					sp += clen;
 				}
 			}
 			else
@@ -374,8 +377,8 @@ gin_bigm_compare_partial(PG_FUNCTION_ARGS)
 	a1p = VARDATA_ANY(arg1);
 	a2p = VARDATA_ANY(arg2);
 
-	mblen1 = pg_mblen(a1p);
-	mblen2 = pg_mblen(a2p);
+	mblen1 = bigm_pg_mblen_with_len(a1p, VARSIZE_ANY_EXHDR(arg1));
+	mblen2 = bigm_pg_mblen_with_len(a2p, VARSIZE_ANY_EXHDR(arg2));
 
 	if (mblen1 != mblen2)
 		PG_RETURN_INT32(1);

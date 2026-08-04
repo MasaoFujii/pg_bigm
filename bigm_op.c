@@ -155,22 +155,56 @@ unique_array(bigm *a, int len)
 	return curend + 1 - a;
 }
 
+#if !BIGM_HAVE_BOUNDS_CHECKED_MBLEN
+/*
+ * t_isspace() and pg_mblen() were replaced with bounds-checked versions
+ * by CVE-2026-2006 fixes.  For older minor releases, provide compatibility
+ * shims under pg_bigm-specific names to avoid exporting symbols that may
+ * later also exist in PostgreSQL core.
+ */
+#if PG_VERSION_NUM < 180000
+int
+bigm_t_isspace_with_len(const char *ptr, int mblen)
+{
+	return t_isspace(ptr);
+}
+#endif	/* PG_VERSION_NUM < 180000 */
+
+int
+bigm_pg_mblen_with_len(const char *mbstr, int limit)
+{
+	return pg_mblen(mbstr);
+}
+
+int
+bigm_pg_mblen_range(const char *mbstr, const char *end)
+{
+	return pg_mblen(mbstr);
+}
+
+int
+bigm_pg_mblen_unbounded(const char *mbstr)
+{
+	return pg_mblen(mbstr);
+}
+#endif	/* !BIGM_HAVE_BOUNDS_CHECKED_MBLEN */
+
 #if PG_VERSION_NUM >= 180000
 /*
  * This function is equivalent to isspace() but supports multibyte
- * characters and encoding. It was part of PostgreSQL 17 and earlier
- * but was removed in commit d3aad4ac57c.
+ * characters and encoding. PostgreSQL core provided t_isspace() through
+ * version 17, but pg_bigm still needs this behavior after that function's
+ * removal, so expose it through a local bounds-aware wrapper.
  */
 int
-t_isspace(const char *ptr)
+bigm_t_isspace_with_len(const char *ptr, int mblen)
 {
 #if PG_VERSION_NUM >= 190000
 #define WC_BUF_LEN  2
-	int			clen = pg_mblen(ptr);
 	pg_wchar	character[WC_BUF_LEN];
 	int			wlen pg_attribute_unused();
 
-	wlen = pg_mb2wchar_with_len(ptr, character, clen);
+	wlen = pg_mb2wchar_with_len(ptr, character, mblen);
 	Assert(wlen <= 1);
 
 	return pg_iswspace(character[0], pg_database_locale());
@@ -179,7 +213,7 @@ t_isspace(const char *ptr)
 	 * This version is copied from PostgreSQL 17.
 	 */
 #define WC_BUF_LEN  3
-	int			clen = pg_mblen(ptr);
+	int			clen = bigm_pg_mblen_with_len(ptr, mblen);
 	wchar_t		character[WC_BUF_LEN];
 	pg_locale_t mylocale = 0;	/* TODO */
 
@@ -193,7 +227,7 @@ t_isspace(const char *ptr)
 }
 #endif	/* PG_VERSION_NUM >= 180000 */
 
-#define iswordchr(c)	(!t_isspace(c))
+#define iswordchr(c, len)	(!bigm_t_isspace_with_len(c, len))
 
 /*
  * Finds first word in string, returns pointer to the word,
@@ -203,18 +237,29 @@ static char *
 find_word(char *str, int lenstr, char **endword, int *charlen)
 {
 	char	   *beginword = str;
+	const char *endstr = str + lenstr;
 
-	while (beginword - str < lenstr && !iswordchr(beginword))
-		beginword += pg_mblen(beginword);
+	while (beginword < endstr)
+	{
+		int			clen = bigm_pg_mblen_range(beginword, endstr);
 
-	if (beginword - str >= lenstr)
+		if (iswordchr(beginword, clen))
+			break;
+		beginword += clen;
+	}
+
+	if (beginword >= endstr)
 		return NULL;
 
 	*endword = beginword;
 	*charlen = 0;
-	while (*endword - str < lenstr && iswordchr(*endword))
+	while (*endword < endstr)
 	{
-		*endword += pg_mblen(*endword);
+		int			clen = bigm_pg_mblen_range(*endword, endstr);
+
+		if (!iswordchr(*endword, clen))
+			break;
+		*endword += clen;
 		(*charlen)++;
 	}
 
@@ -242,7 +287,7 @@ make_bigrams(bigm *bptr, char *str, int bytelen, int charlen)
 
 	if (charlen < 2)
 	{
-		compact_bigram(bptr, ptr, pg_mblen(str));
+		compact_bigram(bptr, ptr, bigm_pg_mblen_unbounded(str));
 		bptr->pmatch = true;
 		bptr++;
 		return bptr;
@@ -251,8 +296,8 @@ make_bigrams(bigm *bptr, char *str, int bytelen, int charlen)
 	if (bytelen > charlen)
 	{
 		/* Find multibyte character boundaries and call compact_bigram */
-		int			lenfirst = pg_mblen(str),
-					lenlast = pg_mblen(str + lenfirst);
+		int			lenfirst = bigm_pg_mblen_unbounded(str),
+					lenlast = bigm_pg_mblen_unbounded(str + lenfirst);
 
 		while ((ptr - str) + lenfirst + lenlast <= bytelen)
 		{
@@ -264,7 +309,7 @@ make_bigrams(bigm *bptr, char *str, int bytelen, int charlen)
 			lenfirst = lenlast;
 			if ((ptr - str) + lenfirst >= bytelen)
 				break;
-			lenlast = pg_mblen(ptr + lenfirst);
+			lenlast = bigm_pg_mblen_unbounded(ptr + lenfirst);
 		}
 	}
 	else
@@ -381,6 +426,7 @@ get_wildcard_part(const char *str, int lenstr,
 {
 	const char *beginword = str;
 	const char *endword;
+	const char *endstr = str + lenstr;
 	char	   *s = buf;
 	bool		in_leading_wildcard_meta = false;
 	bool		in_trailing_wildcard_meta = false;
@@ -395,9 +441,10 @@ get_wildcard_part(const char *str, int lenstr,
 	 */
 	while (beginword - str < lenstr)
 	{
+		clen = bigm_pg_mblen_range(beginword, endstr);
 		if (in_escape)
 		{
-			if (iswordchr(beginword))
+			if (iswordchr(beginword, clen))
 				break;
 			in_escape = false;
 			in_leading_wildcard_meta = false;
@@ -408,12 +455,12 @@ get_wildcard_part(const char *str, int lenstr,
 				in_escape = true;
 			else if (ISWILDCARDCHAR(beginword))
 				in_leading_wildcard_meta = true;
-			else if (iswordchr(beginword))
+			else if (iswordchr(beginword, clen))
 				break;
 			else
 				in_leading_wildcard_meta = false;
 		}
-		beginword += pg_mblen(beginword);
+		beginword += clen;
 	}
 
 	/*
@@ -448,10 +495,10 @@ get_wildcard_part(const char *str, int lenstr,
 	endword = beginword;
 	while (endword - str < lenstr)
 	{
-		clen = pg_mblen(endword);
+		clen = bigm_pg_mblen_range(endword, endstr);
 		if (in_escape)
 		{
-			if (iswordchr(endword))
+			if (iswordchr(endword, clen))
 			{
 				memcpy(s, endword, clen);
 				(*charlen)++;
@@ -479,7 +526,7 @@ get_wildcard_part(const char *str, int lenstr,
 				in_trailing_wildcard_meta = true;
 				break;
 			}
-			else if (iswordchr(endword))
+			else if (iswordchr(endword, clen))
 			{
 				memcpy(s, endword, clen);
 				(*charlen)++;
@@ -711,6 +758,7 @@ likequery(PG_FUNCTION_ARGS)
 {
 	text	   *query = PG_GETARG_TEXT_PP(0);
 	const char *str;
+	const char *endstr;
 	int			len;
 	const char *sp;
 	text	   *result;
@@ -719,6 +767,7 @@ likequery(PG_FUNCTION_ARGS)
 
 	str = VARDATA_ANY(query);
 	len = VARSIZE_ANY_EXHDR(query);
+	endstr = str + len;
 
 	if (len == 0)
 		PG_RETURN_NULL();
@@ -736,7 +785,7 @@ likequery(PG_FUNCTION_ARGS)
 		}
 		else if (IS_HIGHBIT_SET(*sp))
 		{
-			mblen = pg_mblen(sp);
+			mblen = bigm_pg_mblen_range(sp, endstr);
 			memcpy(rp, sp, mblen);
 			rp += mblen;
 			sp += mblen;
