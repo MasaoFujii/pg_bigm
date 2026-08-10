@@ -91,14 +91,15 @@ typedef struct
  * These APIs were back-patched as part of the CVE-2026-2006 fixes, so
  * availability depends on the minor version, not just the major version.
  */
-#define BIGM_HAVE_BOUNDS_CHECKED_MBLEN \
-	((PG_VERSION_NUM >= 140021 && PG_VERSION_NUM < 150000) || \
-	 (PG_VERSION_NUM >= 150016 && PG_VERSION_NUM < 160000) || \
-	 (PG_VERSION_NUM >= 160012 && PG_VERSION_NUM < 170000) || \
-	 (PG_VERSION_NUM >= 170008 && PG_VERSION_NUM < 180000) || \
-	 PG_VERSION_NUM >= 180002)
+#if (PG_VERSION_NUM >= 140021 && PG_VERSION_NUM < 150000) || \
+	(PG_VERSION_NUM >= 150016 && PG_VERSION_NUM < 160000) || \
+	(PG_VERSION_NUM >= 160012 && PG_VERSION_NUM < 170000) || \
+	(PG_VERSION_NUM >= 170008 && PG_VERSION_NUM < 180000) || \
+	PG_VERSION_NUM >= 180002
+#define BIGM_HAVE_BOUNDS_CHECKED_MBLEN
+#endif
 
-#if !BIGM_HAVE_BOUNDS_CHECKED_MBLEN
+#ifndef BIGM_HAVE_BOUNDS_CHECKED_MBLEN
 extern int bigm_pg_mblen_with_len(const char *mbstr, int limit);
 extern int bigm_pg_mblen_range(const char *mbstr, const char *end);
 extern int bigm_pg_mblen_unbounded(const char *mbstr);
@@ -109,15 +110,15 @@ extern int bigm_pg_mblen_unbounded(const char *mbstr);
 	pg_mblen_range(mbstr, end)
 #define bigm_pg_mblen_unbounded(mbstr) \
 	pg_mblen_unbounded(mbstr)
-#endif	/* !BIGM_HAVE_BOUNDS_CHECKED_MBLEN */
+#endif	/* BIGM_HAVE_BOUNDS_CHECKED_MBLEN */
 
 #if PG_VERSION_NUM < 180000
-#if !BIGM_HAVE_BOUNDS_CHECKED_MBLEN
+#ifndef BIGM_HAVE_BOUNDS_CHECKED_MBLEN
 extern int bigm_t_isspace_with_len(const char *ptr, int mblen);
 #else
 #define bigm_t_isspace_with_len(ptr, mblen) \
 	t_isspace_with_len(ptr, mblen)
-#endif	/* !BIGM_HAVE_BOUNDS_CHECKED_MBLEN */
+#endif	/* BIGM_HAVE_BOUNDS_CHECKED_MBLEN */
 #else
 extern int bigm_t_isspace_with_len(const char *ptr, int mblen);
 #endif	/* PG_VERSION_NUM < 180000 */

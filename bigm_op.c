@@ -155,7 +155,7 @@ unique_array(bigm *a, int len)
 	return curend + 1 - a;
 }
 
-#if !BIGM_HAVE_BOUNDS_CHECKED_MBLEN
+#ifndef BIGM_HAVE_BOUNDS_CHECKED_MBLEN
 /*
  * t_isspace() and pg_mblen() were replaced with bounds-checked versions
  * by CVE-2026-2006 fixes.  For older minor releases, provide compatibility
@@ -187,7 +187,7 @@ bigm_pg_mblen_unbounded(const char *mbstr)
 {
 	return pg_mblen(mbstr);
 }
-#endif	/* !BIGM_HAVE_BOUNDS_CHECKED_MBLEN */
+#endif	/* BIGM_HAVE_BOUNDS_CHECKED_MBLEN */
 
 #if PG_VERSION_NUM >= 180000
 /*
