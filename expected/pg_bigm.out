@@ -347,6 +347,87 @@ SELECT col1 FROM test_bigm WHERE col1 LIKE 'pg\___gm%';
  pg_bigm has improved the full text search performance by 200%
 (3 rows)
 
+-- '_' wildcards require rechecking even with a single extracted bigram.
+CREATE TABLE test_bigm_wildcard (name text);
+INSERT INTO test_bigm_wildcard VALUES
+	('a1'), ('ab'), ('abc'), ('a12345'), ('abcdef'), ('abcdefg'), ('b12345'),
+	('a12'), ('abcd'), ('bc'), ('aabc'), ('_'), ('x_'), ('x_y'), ('x\'), ('x\y');
+CREATE INDEX test_bigm_wildcard_idx ON test_bigm_wildcard
+	USING gin (name gin_bigm_ops);
+EXPLAIN (COSTS off)
+SELECT name FROM test_bigm_wildcard WHERE name LIKE 'a_____';
+                    QUERY PLAN                     
+---------------------------------------------------
+ Bitmap Heap Scan on test_bigm_wildcard
+   Recheck Cond: (name ~~ 'a_____'::text)
+   ->  Bitmap Index Scan on test_bigm_wildcard_idx
+         Index Cond: (name ~~ 'a_____'::text)
+(4 rows)
+
+SELECT name FROM test_bigm_wildcard WHERE name LIKE 'a_____' ORDER BY name;
+  name  
+--------
+ a12345
+ abcdef
+(2 rows)
+
+SELECT name FROM test_bigm_wildcard WHERE name LIKE 'a_' ORDER BY name;
+ name 
+------
+ a1
+ ab
+(2 rows)
+
+SELECT name FROM test_bigm_wildcard WHERE name LIKE '%1_' ORDER BY name;
+ name 
+------
+ a12
+(1 row)
+
+SELECT name FROM test_bigm_wildcard WHERE name LIKE '%bc_' ORDER BY name;
+ name 
+------
+ abcd
+(1 row)
+
+SELECT name FROM test_bigm_wildcard WHERE name LIKE 'ab____' ORDER BY name;
+  name  
+--------
+ abcdef
+(1 row)
+
+-- Check leading wildcards and escaped characters.
+SELECT name FROM test_bigm_wildcard WHERE name LIKE '_bc%' ORDER BY name;
+  name   
+---------
+ abc
+ abcd
+ abcdef
+ abcdefg
+(4 rows)
+
+SELECT name FROM test_bigm_wildcard WHERE name LIKE $$%\_%$$ ORDER BY name;
+ name 
+------
+ _
+ x_
+ x_y
+(3 rows)
+
+SELECT name FROM test_bigm_wildcard WHERE name LIKE $$%\\_$$ ORDER BY name;
+ name 
+------
+ x\y
+(1 row)
+
+SELECT name FROM test_bigm_wildcard WHERE name LIKE '%#_' ESCAPE '#' ORDER BY name;
+ name 
+------
+ _
+ x_
+(2 rows)
+
+DROP TABLE test_bigm_wildcard;
 -- tests for pg_bigm.enable_recheck
 SELECT col1 FROM test_bigm WHERE col1 LIKE likequery('trial');
          col1         
