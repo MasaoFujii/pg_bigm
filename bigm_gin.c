@@ -139,30 +139,32 @@ gin_extract_query_bigm(PG_FUNCTION_ARGS)
 				break;
 
 			/*
-			 * Check whether the heap tuple fetched by index search needs to
-			 * be rechecked against the query. If the search word consists of
-			 * one or two characters and doesn't contain any space character,
-			 * we can guarantee that the index test would be exact. That is,
-			 * the heap tuple does match the query, so it doesn't need to be
-			 * rechecked.
+			 * The index test is exact if only one bigram was extracted, no
+			 * duplicates were removed, and the pattern contains neither space
+			 * characters nor unescaped '_' wildcards. Otherwise, the heap tuple
+			 * needs to be rechecked against the query.
 			 */
 			recheck = (bool *) palloc(sizeof(bool));
 			if (bgmlen == 1 && !removeDups)
 			{
 				const char *sp;
 				const char *endstr = str + slen;
+				bool		in_escape = false;
 
 				*recheck = false;
 				for (sp = str; (sp - str) < slen;)
 				{
 					int			clen = bigm_pg_mblen_range(sp, endstr);
 
-					if (bigm_t_isspace_with_len(sp, clen))
+					/* A single bigram match does not guarantee a match for '_' */
+					if (bigm_t_isspace_with_len(sp, clen) ||
+						(!in_escape && *sp == '_'))
 					{
 						*recheck = true;
 						break;
 					}
 
+					in_escape = !in_escape && ISESCAPECHAR(sp);
 					sp += clen;
 				}
 			}

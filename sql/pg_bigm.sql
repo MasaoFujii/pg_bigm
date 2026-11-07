@@ -97,6 +97,29 @@ SELECT col1 FROM test_bigm WHERE col1 LIKE '%\%';
 EXPLAIN (COSTS off) SELECT col1 FROM test_bigm WHERE col1 LIKE 'pg\___gm%';
 SELECT col1 FROM test_bigm WHERE col1 LIKE 'pg\___gm%';
 
+-- '_' wildcards require rechecking even with a single extracted bigram.
+CREATE TABLE test_bigm_wildcard (name text);
+INSERT INTO test_bigm_wildcard VALUES
+	('a1'), ('ab'), ('abc'), ('a12345'), ('abcdef'), ('abcdefg'), ('b12345'),
+	('a12'), ('abcd'), ('bc'), ('aabc'), ('_'), ('x_'), ('x_y'), ('x\'), ('x\y');
+CREATE INDEX test_bigm_wildcard_idx ON test_bigm_wildcard
+	USING gin (name gin_bigm_ops);
+EXPLAIN (COSTS off)
+SELECT name FROM test_bigm_wildcard WHERE name LIKE 'a_____';
+SELECT name FROM test_bigm_wildcard WHERE name LIKE 'a_____' ORDER BY name;
+SELECT name FROM test_bigm_wildcard WHERE name LIKE 'a_' ORDER BY name;
+SELECT name FROM test_bigm_wildcard WHERE name LIKE '%1_' ORDER BY name;
+SELECT name FROM test_bigm_wildcard WHERE name LIKE '%bc_' ORDER BY name;
+SELECT name FROM test_bigm_wildcard WHERE name LIKE 'ab____' ORDER BY name;
+
+-- Check leading wildcards and escaped characters.
+SELECT name FROM test_bigm_wildcard WHERE name LIKE '_bc%' ORDER BY name;
+SELECT name FROM test_bigm_wildcard WHERE name LIKE $$%\_%$$ ORDER BY name;
+SELECT name FROM test_bigm_wildcard WHERE name LIKE $$%\\_$$ ORDER BY name;
+SELECT name FROM test_bigm_wildcard WHERE name LIKE '%#_' ESCAPE '#' ORDER BY name;
+
+DROP TABLE test_bigm_wildcard;
+
 -- tests for pg_bigm.enable_recheck
 SELECT col1 FROM test_bigm WHERE col1 LIKE likequery('trial');
 SET pg_bigm.enable_recheck = off;
