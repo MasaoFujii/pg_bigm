@@ -551,6 +551,10 @@ this threshold. Value must be between 0 and 1 (default is 0.3). Not only
 superuser but also any user can change this parameter value in
 postgresql.conf or by using SET command.
 
+When the threshold is zero, every non-NULL value, including an empty
+string, matches a non-NULL search keyword. In this case, a GIN index
+cannot narrow down the results based on the similarity condition.
+
 ## Limitations
 
 ### Indexed Column Size
