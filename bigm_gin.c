@@ -213,9 +213,14 @@ gin_extract_query_bigm(PG_FUNCTION_ARGS)
 	}
 
 	/*
-	 * If no bigram was extracted then we have to scan all the index.
+	 * Scan the entire index if no bigrams were extracted or the similarity
+	 * threshold is zero.  A zero threshold matches all non-NULL values,
+	 * including empty strings and values with no matching bigrams.
+	 * Compare the threshold as float4 to match bigm_similarity_op().
 	 */
-	if (*nentries == 0)
+	if (*nentries == 0 ||
+		(strategy == SimilarityStrategyNumber &&
+		 (float4) bigm_similarity_limit == 0.0f))
 		*searchMode = GIN_SEARCH_MODE_ALL;
 
 	PG_RETURN_POINTER(entries);
@@ -284,10 +289,13 @@ gin_bigm_consistent(PG_FUNCTION_ARGS)
 			 * just by definition and, consequently, upper bound of
 			 * similarity is just c / len1.
 			 * So, independently on DIVUNION the upper bound formula is the same.
+			 *
+			 * A query with no bigrams has zero similarity to any value, so it
+			 * matches when the threshold is zero.
 			 */
-			res = (nkeys == 0) ? false :
-				((((float4) ntrue) / ((float4) nkeys)) >=
-				  (float4) bigm_similarity_limit);
+			res = ((nkeys == 0) ? 0.0f :
+				   ((float4) ntrue) / ((float4) nkeys)) >=
+				(float4) bigm_similarity_limit;
 			break;
 		default:
 			elog(ERROR, "unrecognized strategy number: %d", strategy);
@@ -346,11 +354,12 @@ gin_bigm_triconsistent(PG_FUNCTION_ARGS)
 			}
 
 			/*
-			 * See comment in gin_bigm_consistent() about upper bound formula
+			 * See the comment in gin_bigm_consistent() for the upper bound formula
+			 * and the handling of queries with no bigrams.
 			 */
-			res = (nkeys == 0) ? GIN_FALSE :
-				(((((float4) ntrue) / ((float4) nkeys)) >=
-				  (float4) bigm_similarity_limit) ? GIN_MAYBE : GIN_FALSE);
+			res = (((nkeys == 0) ? 0.0f :
+					((float4) ntrue) / ((float4) nkeys)) >=
+				   (float4) bigm_similarity_limit) ? GIN_MAYBE : GIN_FALSE;
 
 			if (res != GIN_FALSE && !bigm_enable_recheck)
 				res = GIN_TRUE;

@@ -208,6 +208,60 @@ SELECT count(*), max(bigm_similarity(col1, 'Tool')) FROM test_bigm WHERE NOT col
 SELECT count(*), min(bigm_similarity(col1, 'performance')) FROM test_bigm WHERE col1 =% 'performance';
 SELECT count(*), max(bigm_similarity(col1, 'performance')) FROM test_bigm WHERE NOT col1 =% 'performance';
 
+-- Compare sequential and GIN scans at the similarity threshold endpoints.
+-- A zero threshold matches every non-NULL value for non-NULL queries.
+BEGIN;
+CREATE TEMP TABLE test_bigm_similarity (id int, name text);
+INSERT INTO test_bigm_similarity VALUES
+	(1, 'abc'), (2, 'xyz'), (3, ''), (4, ' '), (5, NULL), (6, 'abc'), (7, 'ab');
+CREATE INDEX test_bigm_similarity_idx ON test_bigm_similarity
+	USING gin (name gin_bigm_ops);
+CREATE TEMP TABLE test_bigm_similarity_queries (query_no int, search_text text);
+INSERT INTO test_bigm_similarity_queries VALUES
+	(1, 'abc'), (2, 'xyz'), (3, ''), (4, ' '), (5, NULL);
+SET LOCAL pg_bigm.enable_recheck = on;
+SET LOCAL pg_bigm.gin_key_limit = 0;
+
+-- Evaluate the reference results without using the index.
+SET LOCAL enable_seqscan = on;
+SET LOCAL enable_indexscan = off;
+SET LOCAL enable_bitmapscan = off;
+SET LOCAL pg_bigm.similarity_limit = 0;
+EXPLAIN (COSTS off)
+SELECT id FROM test_bigm_similarity WHERE name =% 'abc';
+SELECT quote_nullable(q.search_text) AS query,
+	ARRAY(SELECT id FROM test_bigm_similarity
+		  WHERE name =% q.search_text ORDER BY id) AS ids
+FROM test_bigm_similarity_queries q
+ORDER BY q.query_no;
+SET LOCAL pg_bigm.similarity_limit = 1;
+SELECT quote_nullable(q.search_text) AS query,
+	ARRAY(SELECT id FROM test_bigm_similarity
+		  WHERE name =% q.search_text ORDER BY id) AS ids
+FROM test_bigm_similarity_queries q
+ORDER BY q.query_no;
+
+-- Evaluate the same queries using the GIN index.
+SET LOCAL enable_seqscan = off;
+SET LOCAL enable_indexscan = on;
+SET LOCAL enable_bitmapscan = on;
+SET LOCAL pg_bigm.similarity_limit = 0;
+EXPLAIN (COSTS off)
+SELECT id FROM test_bigm_similarity WHERE name =% 'abc';
+SELECT quote_nullable(q.search_text) AS query,
+	ARRAY(SELECT id FROM test_bigm_similarity
+		  WHERE name =% q.search_text ORDER BY id) AS ids
+FROM test_bigm_similarity_queries q
+ORDER BY q.query_no;
+SET LOCAL pg_bigm.similarity_limit = 1;
+SELECT quote_nullable(q.search_text) AS query,
+	ARRAY(SELECT id FROM test_bigm_similarity
+		  WHERE name =% q.search_text ORDER BY id) AS ids
+FROM test_bigm_similarity_queries q
+ORDER BY q.query_no;
+
+ROLLBACK;
+
 -- tests for drop of pg_bigm
 DROP EXTENSION pg_bigm CASCADE;
 SELECT NOT EXISTS
