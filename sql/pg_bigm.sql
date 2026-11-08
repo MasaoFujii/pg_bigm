@@ -164,6 +164,44 @@ SELECT count(*) FROM test_bigm WHERE col1 LIKE likequery('she tore');
 SET pg_bigm.enable_recheck = on;
 SET pg_bigm.gin_key_limit = 0;
 
+-- Key limits must not change LIKE or similarity results when rechecking
+-- is enabled.
+BEGIN;
+CREATE TEMP TABLE test_bigm_key_limit (name text);
+INSERT INTO test_bigm_key_limit VALUES ('ab'), ('xab'), ('ax');
+CREATE INDEX test_bigm_key_limit_idx ON test_bigm_key_limit
+	USING gin (name gin_bigm_ops);
+SET LOCAL pg_bigm.enable_recheck = on;
+SET LOCAL pg_bigm.similarity_limit = 0.3;
+SET LOCAL pg_bigm.gin_key_limit = 1;
+
+-- Reference results from sequential scans.
+SET LOCAL enable_seqscan = on;
+SET LOCAL enable_indexscan = off;
+SET LOCAL enable_bitmapscan = off;
+EXPLAIN (COSTS off)
+SELECT name FROM test_bigm_key_limit WHERE name =% 'ab';
+SELECT name FROM test_bigm_key_limit WHERE name LIKE 'ab%' ORDER BY name;
+SELECT name FROM test_bigm_key_limit WHERE name =% 'ab' ORDER BY name;
+
+-- GIN results must match the sequential scan results at each key limit.
+SET LOCAL enable_seqscan = off;
+SET LOCAL enable_indexscan = on;
+SET LOCAL enable_bitmapscan = on;
+EXPLAIN (COSTS off)
+SELECT name FROM test_bigm_key_limit WHERE name LIKE 'ab%';
+EXPLAIN (COSTS off)
+SELECT name FROM test_bigm_key_limit WHERE name =% 'ab';
+SELECT name FROM test_bigm_key_limit WHERE name LIKE 'ab%' ORDER BY name;
+SELECT name FROM test_bigm_key_limit WHERE name =% 'ab' ORDER BY name;
+SET LOCAL pg_bigm.gin_key_limit = 2;
+SELECT name FROM test_bigm_key_limit WHERE name LIKE 'ab%' ORDER BY name;
+SELECT name FROM test_bigm_key_limit WHERE name =% 'ab' ORDER BY name;
+SET LOCAL pg_bigm.gin_key_limit = 0;
+SELECT name FROM test_bigm_key_limit WHERE name LIKE 'ab%' ORDER BY name;
+SELECT name FROM test_bigm_key_limit WHERE name =% 'ab' ORDER BY name;
+ROLLBACK;
+
 -- tests for backslash handling using explicit string literals
 DO $$
 BEGIN

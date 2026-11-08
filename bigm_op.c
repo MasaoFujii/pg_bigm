@@ -75,8 +75,8 @@ _PG_init(void)
 							 NULL);
 
 	DefineCustomIntVariable("pg_bigm.gin_key_limit",
-							"Sets the maximum number of bi-gram keys allowed to "
-							"use for GIN index search.",
+							"Sets the maximum number of bigram keys used for "
+							"GIN index searches with LIKE.",
 							"Zero means no limit.",
 							&bigm_gin_key_limit,
 							0,
