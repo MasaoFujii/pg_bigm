@@ -427,7 +427,72 @@ SELECT name FROM test_bigm_wildcard WHERE name LIKE '%#_' ESCAPE '#' ORDER BY na
  x_
 (2 rows)
 
+-- Duplicate bigrams require rechecking even with a single distinct bigram.
+-- '%aaa%' extracts only 'aa' after deduplication, but must not match 'aa'.
+INSERT INTO test_bigm_wildcard VALUES ('aa'), ('aaa'), ('aaaa');
+EXPLAIN (COSTS off)
+SELECT name FROM test_bigm_wildcard WHERE name LIKE '%aaa%';
+                    QUERY PLAN                     
+---------------------------------------------------
+ Bitmap Heap Scan on test_bigm_wildcard
+   Recheck Cond: (name ~~ '%aaa%'::text)
+   ->  Bitmap Index Scan on test_bigm_wildcard_idx
+         Index Cond: (name ~~ '%aaa%'::text)
+(4 rows)
+
+SELECT name FROM test_bigm_wildcard WHERE name LIKE '%aaa%' ORDER BY name;
+ name 
+------
+ aaa
+ aaaa
+(2 rows)
+
 DROP TABLE test_bigm_wildcard;
+-- GIN searches with no extracted bigrams must include values with no index
+-- keys and recheck each candidate against the LIKE pattern.
+CREATE TABLE test_bigm_no_keys (name text);
+INSERT INTO test_bigm_no_keys VALUES (NULL), (''), (' '), ('a'), ('ab');
+CREATE INDEX test_bigm_no_keys_idx ON test_bigm_no_keys
+	USING gin (name gin_bigm_ops);
+EXPLAIN (COSTS off)
+SELECT name FROM test_bigm_no_keys WHERE name LIKE '';
+                    QUERY PLAN                    
+--------------------------------------------------
+ Bitmap Heap Scan on test_bigm_no_keys
+   Recheck Cond: (name ~~ ''::text)
+   ->  Bitmap Index Scan on test_bigm_no_keys_idx
+         Index Cond: (name ~~ ''::text)
+(4 rows)
+
+SELECT quote_nullable(name) FROM test_bigm_no_keys WHERE name LIKE '' ORDER BY name;
+ quote_nullable 
+----------------
+ ''
+(1 row)
+
+SELECT quote_nullable(name) FROM test_bigm_no_keys WHERE name LIKE '%' ORDER BY name;
+ quote_nullable 
+----------------
+ ''
+ ' '
+ 'a'
+ 'ab'
+(4 rows)
+
+SELECT quote_nullable(name) FROM test_bigm_no_keys WHERE name LIKE '_' ORDER BY name;
+ quote_nullable 
+----------------
+ ' '
+ 'a'
+(2 rows)
+
+SELECT quote_nullable(name) FROM test_bigm_no_keys WHERE name LIKE '__' ORDER BY name;
+ quote_nullable 
+----------------
+ 'ab'
+(1 row)
+
+DROP TABLE test_bigm_no_keys;
 -- tests for pg_bigm.enable_recheck
 SELECT col1 FROM test_bigm WHERE col1 LIKE likequery('trial');
          col1         

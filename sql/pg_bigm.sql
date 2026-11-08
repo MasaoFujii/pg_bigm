@@ -118,7 +118,28 @@ SELECT name FROM test_bigm_wildcard WHERE name LIKE $$%\_%$$ ORDER BY name;
 SELECT name FROM test_bigm_wildcard WHERE name LIKE $$%\\_$$ ORDER BY name;
 SELECT name FROM test_bigm_wildcard WHERE name LIKE '%#_' ESCAPE '#' ORDER BY name;
 
+-- Duplicate bigrams require rechecking even with a single distinct bigram.
+-- '%aaa%' extracts only 'aa' after deduplication, but must not match 'aa'.
+INSERT INTO test_bigm_wildcard VALUES ('aa'), ('aaa'), ('aaaa');
+EXPLAIN (COSTS off)
+SELECT name FROM test_bigm_wildcard WHERE name LIKE '%aaa%';
+SELECT name FROM test_bigm_wildcard WHERE name LIKE '%aaa%' ORDER BY name;
+
 DROP TABLE test_bigm_wildcard;
+
+-- GIN searches with no extracted bigrams must include values with no index
+-- keys and recheck each candidate against the LIKE pattern.
+CREATE TABLE test_bigm_no_keys (name text);
+INSERT INTO test_bigm_no_keys VALUES (NULL), (''), (' '), ('a'), ('ab');
+CREATE INDEX test_bigm_no_keys_idx ON test_bigm_no_keys
+	USING gin (name gin_bigm_ops);
+EXPLAIN (COSTS off)
+SELECT name FROM test_bigm_no_keys WHERE name LIKE '';
+SELECT quote_nullable(name) FROM test_bigm_no_keys WHERE name LIKE '' ORDER BY name;
+SELECT quote_nullable(name) FROM test_bigm_no_keys WHERE name LIKE '%' ORDER BY name;
+SELECT quote_nullable(name) FROM test_bigm_no_keys WHERE name LIKE '_' ORDER BY name;
+SELECT quote_nullable(name) FROM test_bigm_no_keys WHERE name LIKE '__' ORDER BY name;
+DROP TABLE test_bigm_no_keys;
 
 -- tests for pg_bigm.enable_recheck
 SELECT col1 FROM test_bigm WHERE col1 LIKE likequery('trial');
