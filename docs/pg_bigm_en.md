@@ -542,6 +542,9 @@ included in the result candidates retrieved from full text search index.
 Please note that this can increase the workload of Recheck and decrease
 the performance.
 
+This parameter applies only to LIKE searches. Similarity searches (`=%`)
+always use all the 2-grams of the search keyword to avoid missing matches.
+
 ### pg_bigm.similarity_limit
 
 pg_bigm.similarity_limit is a parameter that specifies the threshold

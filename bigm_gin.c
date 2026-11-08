@@ -180,8 +180,13 @@ gin_extract_query_bigm(PG_FUNCTION_ARGS)
 		{
 			bgm = generate_bigm(VARDATA(val), VARSIZE(val) - VARHDRSZ);
 			bgmlen = ARRNELEM(bgm);
-			*nentries = (bigm_gin_key_limit == 0) ?
-				bgmlen : Min(bigm_gin_key_limit, bgmlen);
+
+			/*
+			 * Keep all query bigrams for candidate selection and the similarity
+			 * upper bound computed by the consistent functions. Applying
+			 * gin_key_limit could discard matching rows before rechecking.
+			 */
+			*nentries = bgmlen;
 			break;
 		}
 		default:
