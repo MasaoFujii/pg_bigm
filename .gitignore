@@ -7,3 +7,9 @@ regression.*
 
 # Generated subdirectories
 /results/
+
+# Generated regression tests for gin_bigm_signed_ops
+/sql/pg_bigm_signed.sql
+/sql/pg_bigm_ja_signed.sql
+/expected/pg_bigm_signed.out
+/expected/pg_bigm_ja_signed.out

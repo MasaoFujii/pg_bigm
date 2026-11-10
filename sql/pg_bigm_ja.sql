@@ -79,3 +79,7 @@ SELECT count(*), min(bigm_similarity(col1, 'インデックスを作成')) FROM 
 SELECT count(*), max(bigm_similarity(col1, 'インデックスを作成')) FROM test_bigm WHERE NOT col1 =% 'インデックスを作成';
 SELECT count(*), min(bigm_similarity(col1, '3-gramの全文検索')) FROM test_bigm WHERE col1 =% '3-gramの全文検索';
 SELECT count(*), max(bigm_similarity(col1, '3-gramの全文検索')) FROM test_bigm WHERE NOT col1 =% '3-gramの全文検索';
+
+-- Clean up before running the tests with another operator class.
+DROP TABLE test_bigm;
+DROP EXTENSION pg_bigm;

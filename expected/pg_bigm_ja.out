@@ -282,3 +282,6 @@ SELECT count(*), max(bigm_similarity(col1, '3-gramの全文検索')) FROM test_b
    203 | 0.0196078
 (1 row)
 
+-- Clean up before running the tests with another operator class.
+DROP TABLE test_bigm;
+DROP EXTENSION pg_bigm;
