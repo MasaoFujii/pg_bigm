@@ -38,6 +38,7 @@ char	   *bigm_last_update = NULL;
 
 PG_FUNCTION_INFO_V1(show_bigm);
 PG_FUNCTION_INFO_V1(bigmtextcmp);
+PG_FUNCTION_INFO_V1(bigmtextcmp_signed);
 PG_FUNCTION_INFO_V1(likequery);
 PG_FUNCTION_INFO_V1(bigm_similarity);
 PG_FUNCTION_INFO_V1(bigm_similarity_op);
@@ -50,6 +51,7 @@ PG_FUNCTION_INFO_V1(bigm_similarity_op);
 #if PG_VERSION_NUM < 90400
 Datum		show_bigm(PG_FUNCTION_ARGS);
 Datum		bigmtextcmp(PG_FUNCTION_ARGS);
+Datum		bigmtextcmp_signed(PG_FUNCTION_ARGS);
 Datum		likequery(PG_FUNCTION_ARGS);
 Datum		bigm_similarity(PG_FUNCTION_ARGS);
 Datum		bigm_similarity_op(PG_FUNCTION_ARGS);
@@ -811,4 +813,32 @@ bigmtextcmp(PG_FUNCTION_ARGS)
 	int			len2 = VARSIZE_ANY_EXHDR(arg2);
 
 	PG_RETURN_INT32(bigmstrcmp(a1p, len1, a2p, len2));
+}
+
+/*
+ * Compare keys for gin_bigm_signed_ops using signed char on all platforms.
+ * The platform-dependent comparison in bigmtextcmp() is preserved for
+ * compatibility with existing gin_bigm_ops indexes.
+ */
+Datum
+bigmtextcmp_signed(PG_FUNCTION_ARGS)
+{
+	text	   *arg1 = PG_GETARG_TEXT_PP(0);
+	text	   *arg2 = PG_GETARG_TEXT_PP(1);
+	const signed char *s1 = (const signed char *) VARDATA_ANY(arg1);
+	const signed char *s2 = (const signed char *) VARDATA_ANY(arg2);
+	int			len1 = VARSIZE_ANY_EXHDR(arg1);
+	int			len2 = VARSIZE_ANY_EXHDR(arg2);
+	int			len = Min(len1, len2);
+	int			i;
+
+	for (i = 0; i < len; i++)
+	{
+		if (s1[i] < s2[i])
+			PG_RETURN_INT32(-1);
+		if (s1[i] > s2[i])
+			PG_RETURN_INT32(1);
+	}
+
+	PG_RETURN_INT32((len1 == len2) ? 0 : ((len1 < len2) ? -1 : 1));
 }

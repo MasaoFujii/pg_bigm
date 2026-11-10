@@ -239,7 +239,20 @@ the table, and then creates the full text search index on the
 
 -   **gin** must be used as an index method. GiST is not available for
     pg_bigm.
--   **gin_bigm_ops** must be used as an operator class.
+-   Either **gin_bigm_ops** or **gin_bigm_signed_ops** must be specified
+    explicitly as the operator class.
+
+Both operator classes support LIKE and similarity searches. Physically
+replicating or moving a **gin_bigm_ops** index between different CPU
+architectures, for example from x86-64 to ARM, can cause searches to miss
+matching rows. This happens because the environments can interpret the
+ordering of index keys differently.
+
+Use **gin_bigm_signed_ops** when an index will be used on different CPU
+architectures. It uses the same comparison rules on all platforms, avoiding
+missing matches caused by differences in key ordering.
+
+    =# CREATE INDEX pg_tools_signed_idx ON pg_tools USING gin (description gin_bigm_signed_ops);
 
 You can also create multicolumn pg_bigm index and specify GIN related
 parameters then, as follows.
